@@ -96,6 +96,12 @@ def load_images(directory):
 @click.option('-r', '--reuse', is_flag=True, default=False,
               help='Re-use already selected patches',
               show_default=True)
+@click.option('-w', '--width', default=1280,
+              help='Output image width',
+              show_default=True)
+@click.option('-h', '--height', default=720,
+              help='Output image height',
+              show_default=True)
 def main(**kwargs):
     """Collotron: Automatic collage application."""
 
@@ -118,8 +124,8 @@ def main(**kwargs):
     patches = [p for img in images for p in get_patches(img)]
     print('done ({} patches extracted)'.format(len(patches)))
 
-    width = 1280
-    height = 1280
+    width = kwargs['width']
+    height = kwargs['height']
     collage = np.ones((height, width, 3))
     collage[:] = -1
     while 1:
