@@ -3,8 +3,12 @@
 ## What is it?
 Collotron is a script which loads a bunch of images, extracts patches and paste them randomly together to get a "collage".
 
+## Requirements
+```
+pip install click numpy scikit-image
+```
+
 ## How to run
 ```
-pip install numpy scikit-image
-./collotron.py
+python collotron.py --help
 ```
