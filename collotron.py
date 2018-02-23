@@ -9,6 +9,7 @@ with the parameters!
 import os
 import random
 import sys
+import time
 
 from skimage import io, segmentation, transform, img_as_float, color
 import click
@@ -17,9 +18,76 @@ import numpy as np
 
 IMG_EXTENSIONS = ['.jpg', '.jpeg', '.png']
 
+CENTROIDS = np.array([[
+    [0, 0, 0],
+    [1, 1, 1],
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+    [1, 1, 0],
+]], dtype=np.float)
+CENTROIDS_LABS = color.rgb2lab(CENTROIDS)
+
 
 def approx_equal(a, b, eps=1e-6):
+    """Compare two floating point number."""
     return np.abs(a - b) < eps
+
+
+def init_collage(height, width):
+    collage = np.ones((height, width, 3))
+    collage[:, :, :] = -1
+    return collage
+
+
+class AverageMeter(object):
+    """Computes and stores the average and current value"""
+    def __init__(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
+
+
+def paint_background(collage, patches, clustering, main_cluster):
+    selected_patches = [p
+                        for p, t in zip(patches, clustering == main_cluster)
+                        if t]
+    patch_idxs = list(range(len(selected_patches)))
+    while 1:
+        patch_idx = random.choice(patch_idxs)
+        patch = selected_patches[patch_idx]
+        rows, cols = np.where(collage[:, :, 0] == -1)
+        n = rows.size
+        if n == 0:
+            break
+        idx = random.choice(list(range(n)))
+        position = (rows[idx], cols[idx])
+        # print(' > Pasting patch {:d} at {:d}x{:d}'.format(
+        #     patch_idx, position[0], position[1]))
+        paste(collage, patch, position)
+    return
+
+
+def cluster_patches(patches):
+    """Cluster patches according to the LAB values of their centroid."""
+    labs = np.array([p[-1] for p in patches])
+    diff = (labs.reshape(labs.shape[0], 1, labs.shape[1]) -
+            CENTROIDS_LABS.squeeze())
+    clustering = (diff ** 2).sum(axis=-1).argmin(axis=-1)
+    return clustering
 
 
 def get_patches(img):
@@ -56,20 +124,23 @@ def resize(img, max_shape=(1280, 720)):
 def paste(img, patch, pos):
     """Paste patch to image specifying center position for patch."""
     rows, cols, data, _ = patch
-    height = np.ptp(rows)
-    width = np.ptp(cols)
     xmin = np.min(cols)
     ymin = np.min(rows)
+    xmax = np.max(cols)
+    ymax = np.max(rows)
+    height = ymax - ymin
+    width = xmax - xmin
 
-    for i, (x, y) in enumerate(zip(cols, rows)):
-        x = x - xmin + pos[1] - width // 2
-        if x < 0 or x > img.shape[1] - 1:
-            continue
-        y = y - ymin + pos[0] - height // 2
-        if y < 0 or y > img.shape[0] - 1:
-            continue
-        if img[y, x, 0] == -1:
-            img[y, x] = data[i]
+    cols_im = cols - xmin + pos[1] - width // 2
+    rows_im = rows - ymin + pos[0] - height // 2
+    mask = np.where((cols_im > -1)
+                    & (cols_im < img.shape[1])
+                    & (rows_im > -1)
+                    & (rows_im < img.shape[0]))[0]
+    cols_im, rows_im = cols_im[mask], rows_im[mask]
+    mask1 = np.where(img[rows_im, cols_im, 0] == -1)
+    rows_im, cols_im = rows_im[mask1], cols_im[mask1]
+    img[rows_im, cols_im] = data[mask][mask1]
 
 
 def load_images(directory):
@@ -92,9 +163,6 @@ def load_images(directory):
               type=click.Path(exists=True, file_okay=False),
               help='Directory containing the images',
               default='images',
-              show_default=True)
-@click.option('-r', '--reuse', is_flag=True, default=False,
-              help='Re-use already selected patches',
               show_default=True)
 @click.option('-w', '--width', default=1280,
               help='Output image width',
@@ -124,27 +192,20 @@ def main(**kwargs):
     patches = [p for img in images for p in get_patches(img)]
     print('done ({} patches extracted)'.format(len(patches)))
 
-    width = kwargs['width']
-    height = kwargs['height']
-    collage = np.ones((height, width, 3))
-    collage[:] = -1
-    while 1:
-        if not kwargs['reuse']:
-            if not patches:
-                break
-        patch_idx, patch = random.choice(list(enumerate(patches)))
-        if not kwargs['reuse']:
-            patches.pop(patch_idx)
-        rows, cols = np.where(collage[:, :, 0] == -1)
-        if rows.size == 0:
-            break
-        idx = random.choice(list(enumerate(cols)))[0]
-        position = (rows[idx], cols[idx])
-        print(' > Pasting patch {:d} at {:d}x{:d}'.format(
-            patch_idx, position[0], position[1]))
-        paste(collage, patch, position)
+    print('Clustering the patches...', end=' ')
+    sys.stdout.flush()
+    clustering = cluster_patches(patches)
+    uniques, counts = np.unique(clustering, return_counts=True)
+    main_cluster = np.argmax(counts)
+    print('done')
 
-    collage[collage == -1] = 0
+    collage = init_collage(kwargs['height'], kwargs['width'])
+
+    print('Painting background...', end=' ')
+    sys.stdout.flush()
+    paint_background(collage, patches, clustering, main_cluster)
+    print('done')
+
     print('Over! File written to collage.jpg')
     io.imsave('collage.jpg', collage)
     io.imshow(collage)
