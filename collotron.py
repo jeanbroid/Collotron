@@ -11,22 +11,33 @@ import random
 import sys
 import time
 
-from skimage import io, segmentation, transform, img_as_float, color
+from skimage import io, segmentation, transform, img_as_float, color, filters
+from skimage.future import graph
+
 import click
 import numpy as np
+
+import matplotlib.pyplot as plt
 
 
 IMG_EXTENSIONS = ['.jpg', '.jpeg', '.png']
 
-CENTROIDS = np.array([[
-    [0, 0, 0],
-    [1, 1, 1],
-    [1, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-    [1, 1, 0],
-]], dtype=np.float)
-CENTROIDS_LABS = color.rgb2lab(CENTROIDS)
+
+def weight_boundary(graph, src, dst, n):
+    default = {'weight': 0.0, 'count': 0}
+    count_src = graph[src].get(n, default)['count']
+    count_dst = graph[dst].get(n, default)['count']
+    weight_src = graph[src].get(n, default)['weight']
+    weight_dst = graph[dst].get(n, default)['weight']
+    count = count_src + count_dst
+    return {
+        'count': count,
+        'weight': (count_src * weight_src + count_dst * weight_dst)/count
+    }
+
+
+def merge_boundary(graph, src, dst):
+    pass
 
 
 def approx_equal(a, b, eps=1e-6):
@@ -61,14 +72,12 @@ class AverageMeter(object):
         self.avg = self.sum / self.count
 
 
-def paint_background(collage, patches, clustering, main_cluster):
-    selected_patches = [p
-                        for p, t in zip(patches, clustering == main_cluster)
-                        if t]
-    patch_idxs = list(range(len(selected_patches)))
+def paint_background(collage, patches):
+    """Use main cluster patches to paint a homogeneous background."""
+    patch_idxs = list(range(len(patches)))
     while 1:
         patch_idx = random.choice(patch_idxs)
-        patch = selected_patches[patch_idx]
+        patch = patches[patch_idx]
         rows, cols = np.where(collage[:, :, 0] == -1)
         n = rows.size
         if n == 0:
@@ -81,25 +90,20 @@ def paint_background(collage, patches, clustering, main_cluster):
     return
 
 
-def cluster_patches(patches):
-    """Cluster patches according to the LAB values of their centroid."""
-    labs = np.array([p[-1] for p in patches])
-    diff = (labs.reshape(labs.shape[0], 1, labs.shape[1]) -
-            CENTROIDS_LABS.squeeze())
-    clustering = (diff ** 2).sum(axis=-1).argmin(axis=-1)
-    return clustering
-
-
-def get_patches(img):
+def get_patches(img, compactness=30, n_segments=2000, rag_thresh=0.08):
     """Get list of patches from image found with SLIC."""
     patches = []
     img_lab = color.rgb2lab(img)
-    segmented = segmentation.slic(img_lab,
-                                  n_segments=10,
-                                  compactness=25.0,
-                                  max_iter=10,
-                                  sigma=20,
-                                  convert2lab=False)
+    edges = filters.sobel(color.rgb2gray(img))
+    labels = segmentation.slic(img_lab, convert2lab=False,
+                               compactness=30, n_segments=200)
+    g = graph.rag_boundary(labels, edges)
+    segmented = graph.merge_hierarchical(labels, g, thresh=rag_thresh,
+                                         rag_copy=False,
+                                         in_place_merge=True,
+                                         merge_func=merge_boundary,
+                                         weight_func=weight_boundary)
+
     for i in range(np.max(segmented) + 1):
         rows, cols = np.where(segmented == i)
         data = img[rows, cols]
@@ -192,18 +196,11 @@ def main(**kwargs):
     patches = [p for img in images for p in get_patches(img)]
     print('done ({} patches extracted)'.format(len(patches)))
 
-    print('Clustering the patches...', end=' ')
-    sys.stdout.flush()
-    clustering = cluster_patches(patches)
-    uniques, counts = np.unique(clustering, return_counts=True)
-    main_cluster = np.argmax(counts)
-    print('done')
-
     collage = init_collage(kwargs['height'], kwargs['width'])
 
     print('Painting background...', end=' ')
     sys.stdout.flush()
-    paint_background(collage, patches, clustering, main_cluster)
+    paint_background(collage, patches)
     print('done')
 
     print('Over! File written to collage.jpg')
