@@ -9,15 +9,12 @@ with the parameters!
 import os
 import random
 import sys
-import time
 
 from skimage import io, segmentation, transform, img_as_float, color, filters
 from skimage.future import graph
 
 import click
 import numpy as np
-
-import matplotlib.pyplot as plt
 
 
 IMG_EXTENSIONS = ['.jpg', '.jpeg', '.png']
@@ -90,13 +87,13 @@ def paint_background(collage, patches):
     return
 
 
-def get_patches(img, compactness=30, n_segments=2000, rag_thresh=0.08):
+def get_patches(img, compactness=30, n_segments=200, rag_thresh=0.08):
     """Get list of patches from image found with SLIC."""
     patches = []
     img_lab = color.rgb2lab(img)
     edges = filters.sobel(color.rgb2gray(img))
     labels = segmentation.slic(img_lab, convert2lab=False,
-                               compactness=30, n_segments=200)
+                               compactness=compactness, n_segments=n_segments)
     g = graph.rag_boundary(labels, edges)
     segmented = graph.merge_hierarchical(labels, g, thresh=rag_thresh,
                                          rag_copy=False,
