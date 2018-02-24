@@ -171,6 +171,7 @@ def load_images(directory):
 @click.option('-h', '--height', default=720,
               help='Output image height',
               show_default=True)
+@click.option('-t', '--thresh', default=0.08)
 def main(**kwargs):
     """Collotron: Automatic collage application."""
 
@@ -190,7 +191,8 @@ def main(**kwargs):
 
     print('Extracting patches...', end=' ')
     sys.stdout.flush()
-    patches = [p for img in images for p in get_patches(img)]
+    patches = [p for img in images
+               for p in get_patches(img, rag_thresh=kwargs['thresh'])]
     print('done ({} patches extracted)'.format(len(patches)))
 
     collage = init_collage(kwargs['height'], kwargs['width'])
