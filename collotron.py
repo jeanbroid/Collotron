@@ -9,6 +9,7 @@ with the parameters!
 import os
 import random
 import sys
+import time
 
 from skimage import io, segmentation, transform, img_as_float, color, filters
 from skimage.future import graph
@@ -67,6 +68,21 @@ class AverageMeter(object):
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
+
+
+class AverageMeterLogger(object):
+    def __init__(self):
+        self.meter = AverageMeter()
+        self.fmt = 'cur={:0.6f}s avg={:0.6f}s'
+        self.start = None
+
+    def tic(self):
+        self.start = time.time()
+
+    def toc(self):
+        elapsed = time.time() - self.start
+        self.meter.update(elapsed)
+        print(self.fmt.format(elapsed, self.meter.avg))
 
 
 def paint_background(collage, patches):
