@@ -172,6 +172,8 @@ def load_images(directory):
               help='Output image height',
               show_default=True)
 @click.option('-t', '--thresh', default=0.08)
+@click.option('--show', is_flag=True, default=False)
+@click.option('--save', is_flag=True, default=True)
 def main(**kwargs):
     """Collotron: Automatic collage application."""
 
@@ -203,9 +205,11 @@ def main(**kwargs):
     print('done')
 
     print('Over! File written to collage.jpg')
-    io.imsave('collage.jpg', collage)
-    io.imshow(collage)
-    io.show()
+    if kwargs['save']:
+        io.imsave('collage.jpg', collage)
+    if kwargs['show']:
+        io.imshow(collage)
+        io.show()
 
 
 if __name__ == "__main__":
