@@ -160,11 +160,8 @@ def load_images(directory):
 
 
 @click.command()
-@click.option('-d', '-directory',
-              type=click.Path(exists=True, file_okay=False),
-              help='Directory containing the images',
-              default='images',
-              show_default=True)
+@click.argument('directory',
+                type=click.Path(exists=True, file_okay=False))
 @click.option('-w', '--width', default=1280,
               help='Output image width',
               show_default=True)
