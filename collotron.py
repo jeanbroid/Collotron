@@ -9,6 +9,7 @@ with the parameters!
 import os
 import random
 import sys
+import time
 
 from skimage import io, segmentation, transform, img_as_float, color, filters
 from skimage.future import graph
@@ -71,18 +72,15 @@ class AverageMeter(object):
 
 def paint_background(collage, patches):
     """Use main cluster patches to paint a homogeneous background."""
-    patch_idxs = list(range(len(patches)))
+    n_patches = len(patches)
     while 1:
-        patch_idx = random.choice(patch_idxs)
-        patch = patches[patch_idx]
         rows, cols = np.where(collage[:, :, 0] == -1)
         n = rows.size
         if n == 0:
             break
-        idx = random.choice(list(range(n)))
+        idx = np.random.randint(n)
         position = (rows[idx], cols[idx])
-        # print(' > Pasting patch {:d} at {:d}x{:d}'.format(
-        #     patch_idx, position[0], position[1]))
+        patch = patches[np.random.randint(n_patches)]
         paste(collage, patch, position)
     return
 
@@ -101,8 +99,13 @@ def get_patches(img, compactness=30, n_segments=200, rag_thresh=0.08):
                                          merge_func=merge_boundary,
                                          weight_func=weight_boundary)
 
-    for i in range(np.max(segmented) + 1):
-        rows, cols = np.where(segmented == i)
+    idxs_sorted = np.argsort(segmented.reshape((segmented.size)))
+    _, idxs_start = np.unique(
+        segmented.reshape((segmented.size))[idxs_sorted],
+        return_index=True)
+    idxs_for_values = np.split(idxs_sorted, idxs_start[1:])
+    for idxs in idxs_for_values:
+        rows, cols = np.unravel_index(idxs, img.shape[:2])
         data = img[rows, cols]
         lab = np.mean(img_lab[rows, cols], axis=0)
         patches.append((rows, cols, data, lab))
@@ -190,15 +193,27 @@ def main(**kwargs):
 
     print('Extracting patches...', end=' ')
     sys.stdout.flush()
+
     patches = [p for img in images
                for p in get_patches(img, rag_thresh=kwargs['thresh'])]
+    stop = time.time()
     print('done ({} patches extracted)'.format(len(patches)))
 
+    # return
     collage = init_collage(kwargs['height'], kwargs['width'])
 
     print('Painting background...', end=' ')
     sys.stdout.flush()
-    paint_background(collage, patches)
+
+    meter = AverageMeter()
+    for _ in range(1):
+        collage[:, :, :] = -1
+        start = time.time()
+        paint_background(collage, patches)
+        stop = time.time()
+        meter.update(stop - start)
+    print('cur={:0.2f}s avg={:0.2f}s n_runs={:02d}'.format(
+        stop - start, meter.avg, meter.count))
     print('done')
 
     print('Over! File written to collage.jpg')
