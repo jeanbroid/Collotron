@@ -11,7 +11,8 @@ import random
 import sys
 import time
 
-from skimage import io, segmentation, transform, img_as_float, color, filters
+from skimage import (io, segmentation, transform, img_as_float, color, filters,
+                     img_as_ubyte)
 from skimage.future import graph
 
 import click
@@ -174,8 +175,9 @@ def load_images(directory):
 @click.option('-t', '--thresh', default=0.08)
 @click.option('--show', is_flag=True, default=False)
 @click.option('--save', is_flag=True, default=True)
+@click.option('--output', type=click.Path(dir_okay=False))
 def main(**kwargs):
-    """Collotron: Automatic collage application."""
+    """Collotron: automatic collage application."""
 
     print('Loading images...', end=' ')
     sys.stdout.flush()
@@ -218,7 +220,10 @@ def main(**kwargs):
 
     print('Over! File written to collage.jpg')
     if kwargs['save']:
-        io.imsave('collage.jpg', collage)
+        if kwargs['output']:
+            io.imsave(kwargs['output'], collage)
+        else:
+            io.imsave('collage.jpg', collage)
     if kwargs['show']:
         io.imshow(collage)
         io.show()
